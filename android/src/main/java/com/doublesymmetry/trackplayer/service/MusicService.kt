@@ -101,10 +101,19 @@ class MusicService : HeadlessJsMediaService() {
     }
 
     fun getCurrentBitmap(): ListenableFuture<Bitmap>? {
-        return player.exoPlayer.currentMediaItem?.mediaMetadata?.let {
-            mediaSession.bitmapLoader.loadBitmapFromMetadata(
-                it
-            )
+        // return player.exoPlayer.currentMediaItem?.mediaMetadata?.let {
+        //     mediaSession.bitmapLoader.loadBitmapFromMetadata(
+        //         it
+        //     )
+        // }
+
+        return try {
+            player.exoPlayer.currentMediaItem?.mediaMetadata?.let {
+                mediaSession.bitmapLoader.loadBitmapFromMetadata(it)
+            }
+        } catch (e: Exception) {
+            Timber.e("Error loading bitmap: ${e.message}")
+            null
         }
     }
 
@@ -808,7 +817,21 @@ class MusicService : HeadlessJsMediaService() {
 
     override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
         // https://github.com/androidx/media/issues/843#issuecomment-1860555950
-        super.onUpdateNotification(session, true)
+        // super.onUpdateNotification(session, true)
+
+        try {
+            super.onUpdateNotification(session, true)
+        } catch (e: Exception) {
+            Timber.e("Error in onUpdateNotification: ${e.message}")
+            // Fallback to a basic notification without artwork
+            // val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            //     .setSmallIcon(R.drawable.ic_notification) // Make sure you have this icon
+            //     .setContentTitle(currentTrack.title)
+            //     .setContentText(currentTrack.artist)
+            //     .build()
+                
+            // startForeground(NOTIFICATION_ID, notification)
+        }
     }
 
     @MainThread

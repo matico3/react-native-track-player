@@ -18,6 +18,7 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.guava.future
 import java.io.IOException
 import javax.inject.Inject
+import timber.log.Timber
 
 // https://github.com/androidx/media/issues/121
 
@@ -42,24 +43,92 @@ class CoilBitmapLoader @Inject constructor(
     }
 
     override fun loadBitmap(uri: Uri): ListenableFuture<Bitmap> = scope.future {
-        val bitmap: Bitmap?
-        val parsedUri = uri.toString()
-        if (parsedUri.startsWith("file://")) {
-            bitmap = getEmbeddedBitmap(parsedUri.substring(7))
-        } else {
-            var imgrequest = ImageRequest.Builder(context)
-                .data(uri)
-                .allowHardware(false)
-            // HACK: header implementation should be done via parsed data from uri
+        // val bitmap: Bitmap?
+        // val parsedUri = uri.toString()
+        // if (parsedUri.startsWith("file://")) {
+        //     bitmap = getEmbeddedBitmap(parsedUri.substring(7))
+        // } else {
+        //     var imgrequest = ImageRequest.Builder(context)
+        //         .data(uri)
+        //         .allowHardware(false)
+        //     // HACK: header implementation should be done via parsed data from uri
 
-            if (Build.MANUFACTURER == "samsung" || cropSquare) {
-                imgrequest = imgrequest.transformations(CropSquareTransformation())
+        //     if (Build.MANUFACTURER == "samsung" || cropSquare) {
+        //         imgrequest = imgrequest.transformations(CropSquareTransformation())
+        //     }
+        //     val response = imageLoader.execute(imgrequest.build())
+        //     bitmap = (response.drawable as? BitmapDrawable)?.bitmap
+
+        // }
+        // bitmap ?: Bitmap.createBitmap(1, 1, Bitmap.Config.RGB_565)
+
+
+        // 1st attempt which laster for a while
+        // try {
+        //     val bitmap: Bitmap?
+        //     val parsedUri = uri.toString()
+        //     if (parsedUri.startsWith("file://")) {
+        //         bitmap = getEmbeddedBitmap(parsedUri.substring(7))
+        //     } else {
+        //         var imgrequest = ImageRequest.Builder(context)
+        //             .data(uri)
+        //             .allowHardware(false)
+        //             .size(512) // Set a reasonable max size
+        //             .fallback(android.R.drawable.ic_media_play) // Fallback drawable if loading fails
+
+        //         if (Build.MANUFACTURER == "samsung" || cropSquare) {
+        //             imgrequest = imgrequest.transformations(CropSquareTransformation())
+        //         }
+                
+        //         val response = imageLoader.execute(imgrequest.build())
+        //         bitmap = (response.drawable as? BitmapDrawable)?.bitmap
+        //     }
+
+        //     // Return a valid bitmap even if loading failed
+        //     return@future bitmap ?: Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888).apply {
+        //         eraseColor(android.graphics.Color.TRANSPARENT)
+        //     }
+        // } catch (e: Exception) {
+        //     Timber.e("Error loading bitmap: ${e.message}")
+        //     // Return an empty bitmap rather than throwing
+        //     return@future Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888).apply {
+        //         eraseColor(android.graphics.Color.TRANSPARENT)
+        //     }
+        // }
+
+        try {
+            val bitmap: Bitmap?
+            val parsedUri = uri.toString()
+            if (parsedUri.startsWith("file://")) {
+                bitmap = getEmbeddedBitmap(parsedUri.substring(7))
+            } else {
+                var imgrequest = ImageRequest.Builder(context)
+                    .data(uri)
+                    .allowHardware(false)
+                    .size(512)  // Set a reasonable max size
+                    .placeholder(android.R.drawable.ic_menu_gallery) // Add placeholder
+                    .error(android.R.drawable.ic_menu_gallery)      // Add error placeholder
+                    
+                if (Build.MANUFACTURER == "samsung" || cropSquare) {
+                    imgrequest = imgrequest.transformations(CropSquareTransformation())
+                }
+                
+                val response = imageLoader.execute(imgrequest.build())
+                bitmap = (response.drawable as? BitmapDrawable)?.bitmap
             }
-            val response = imageLoader.execute(imgrequest.build())
-            bitmap = (response.drawable as? BitmapDrawable)?.bitmap
 
+            // Return a valid bitmap even if loading failed
+            return@future bitmap ?: Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888).apply {
+                eraseColor(android.graphics.Color.TRANSPARENT)
+            }
+        } catch (e: Exception) {
+            Timber.e("Error loading bitmap: ${e.message}")
+            // Return an empty bitmap rather than throwing
+            return@future Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888).apply {
+                eraseColor(android.graphics.Color.TRANSPARENT)
+            }
         }
-        bitmap ?: Bitmap.createBitmap(1, 1, Bitmap.Config.RGB_565)
+
 
     }
 }
