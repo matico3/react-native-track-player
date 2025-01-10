@@ -820,17 +820,10 @@ class MusicService : HeadlessJsMediaService() {
         // super.onUpdateNotification(session, true)
 
         try {
-            super.onUpdateNotification(session, true)
+            // super.onUpdateNotification(session, true) // staro preverjeno
+            super.onUpdateNotification(session, startInForegroundRequired)            
         } catch (e: Exception) {
             Timber.e("Error in onUpdateNotification: ${e.message}")
-            // Fallback to a basic notification without artwork
-            // val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            //     .setSmallIcon(R.drawable.ic_notification) // Make sure you have this icon
-            //     .setContentTitle(currentTrack.title)
-            //     .setContentText(currentTrack.artist)
-            //     .build()
-                
-            // startForeground(NOTIFICATION_ID, notification)
         }
     }
 
@@ -1009,12 +1002,14 @@ class MusicService : HeadlessJsMediaService() {
             val isMediaNotificationController = session.isMediaNotificationController(controller)
             val isAutomotiveController = session.isAutomotiveController(controller)
             val isAutoCompanionController = session.isAutoCompanionController(controller)
+            
             emit(MusicEvents.CONNECTOR_CONNECTED, Bundle().apply {
                 putString("package", controller.packageName)
                 putBoolean("isMediaNotificationController", isMediaNotificationController)
                 putBoolean("isAutomotiveController", isAutomotiveController)
                 putBoolean("isAutoCompanionController", isAutoCompanionController)
             })
+            
             if (controller.packageName in arrayOf(
                     "com.android.systemui",
                     // https://github.com/googlesamples/android-media-controller
@@ -1027,6 +1022,7 @@ class MusicService : HeadlessJsMediaService() {
                     onStartCommand(null, 0, 0)
                 }
             }
+
             return if (
                 isMediaNotificationController ||
                 isAutomotiveController ||
