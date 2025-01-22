@@ -299,6 +299,11 @@ class MusicService : HeadlessJsMediaService() {
             Player.COMMAND_SET_MEDIA_ITEM,
             Player.COMMAND_PREPARE,
             Player.COMMAND_RELEASE,
+            // Always add skip commands for Android Auto
+            Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
+            Player.COMMAND_SEEK_TO_NEXT,
+            Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM, 
+            Player.COMMAND_SEEK_TO_PREVIOUS
         )
         notificationCapabilities.forEach {
             when (it) {
@@ -308,14 +313,14 @@ class MusicService : HeadlessJsMediaService() {
                 Capability.STOP -> {
                     playerCommandsBuilder.add(Player.COMMAND_STOP)
                 }
-                Capability.SKIP_TO_NEXT -> {
-                    playerCommandsBuilder.add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
-                    playerCommandsBuilder.add(Player.COMMAND_SEEK_TO_NEXT)
-                }
-                Capability.SKIP_TO_PREVIOUS -> {
-                    playerCommandsBuilder.add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
-                    playerCommandsBuilder.add(Player.COMMAND_SEEK_TO_PREVIOUS)
-                }
+                // Capability.SKIP_TO_NEXT -> {
+                //     playerCommandsBuilder.add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+                //     playerCommandsBuilder.add(Player.COMMAND_SEEK_TO_NEXT)
+                // }
+                // Capability.SKIP_TO_PREVIOUS -> {
+                //     playerCommandsBuilder.add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+                //     playerCommandsBuilder.add(Player.COMMAND_SEEK_TO_PREVIOUS)
+                // }
                 Capability.JUMP_FORWARD -> {
                     playerCommandsBuilder.add(Player.COMMAND_SEEK_FORWARD)
                 }
