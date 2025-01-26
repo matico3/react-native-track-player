@@ -250,6 +250,7 @@ abstract class AudioPlayer internal constructor(
         }
 
     fun play() {
+        exoPlayer.seekToDefaultPosition()
         exoPlayer.play()
         if (currentItem != null) {
             exoPlayer.prepare()
