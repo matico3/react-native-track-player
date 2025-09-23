@@ -329,8 +329,8 @@ class MusicService : HeadlessJsMediaService() {
             Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
             Player.COMMAND_SEEK_TO_NEXT,
             Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM, 
-            Player.COMMAND_SEEK_TO_PREVIOUS
-            Player.COMMAND_CHANGE_MEDIA_ITEMS,
+            Player.COMMAND_SEEK_TO_PREVIOUS,
+            Player.COMMAND_CHANGE_MEDIA_ITEMS
         )
         notificationCapabilities.forEach {
             when (it) {
