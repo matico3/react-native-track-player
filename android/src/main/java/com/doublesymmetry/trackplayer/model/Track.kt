@@ -9,7 +9,6 @@ import androidx.media3.common.util.UnstableApi
 import com.lovegaoshi.kotlinaudio.models.AudioItemOptions
 import com.lovegaoshi.kotlinaudio.models.MediaType
 import com.doublesymmetry.trackplayer.utils.BundleUtils
-import androidx.media3.datasource.RawResourceDataSource
 
 /**
  * @author Milen Pivchev @mpivchev
@@ -43,9 +42,7 @@ class Track
             BundleUtils.getUri(context, bundle, "url")
         } else {
             // RawResourceDataSource.buildRawResourceUri(resourceId!!)
-            Uri.Builder().scheme(ContentResolver.SCHEME_ANDROID_RESOURCE).path(Integer. toString(
-                resourceId!!
-            )).build()
+            Uri.Builder().scheme(ContentResolver.SCHEME_ANDROID_RESOURCE).path(resourceId!!.toString()).build()
         }
         val trackType = bundle.getString("type", "default")
         for (t in MediaType.entries) {

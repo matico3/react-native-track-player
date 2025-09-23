@@ -8,13 +8,18 @@
 
 import Foundation
 import MediaPlayer
-import SwiftAudioEx
+import React
+
+@objc public protocol RNTPDelegate {
+    func sendEvent(name: String, body: Any)
+}
 
 @objc(RNTrackPlayer)
-public class RNTrackPlayer: RCTEventEmitter, AudioSessionControllerDelegate {
+public class RNTrackPlayer: NSObject, AudioSessionControllerDelegate {
 
+    // newarch swift event emitter
+    @objc public weak var delegate: RNTPDelegate? = nil
     // MARK: - Attributes
-
     private var hasInitialized = false
     private let player = QueuedAudioPlayer()
     private let audioSessionController = AudioSessionController.shared
@@ -31,7 +36,6 @@ public class RNTrackPlayer: RCTEventEmitter, AudioSessionControllerDelegate {
 
     public override init() {
         super.init()
-        EventEmitter.shared.register(eventEmitter: self)
         audioSessionController.delegate = self
         player.playWhenReady = false;
         player.event.receiveChapterMetadata.addListener(self, handleAudioPlayerChapterMetadataReceived)
@@ -48,63 +52,8 @@ public class RNTrackPlayer: RCTEventEmitter, AudioSessionControllerDelegate {
         reset(resolve: { _ in }, reject: { _, _, _  in })
     }
 
-    // MARK: - RCTEventEmitter
-
-    override public static func requiresMainQueueSetup() -> Bool {
-        return true;
-    }
-
-    @objc(constantsToExport)
-    override public func constantsToExport() -> [AnyHashable: Any] {
-        return [
-            "STATE_NONE": State.none.rawValue,
-            "STATE_READY": State.ready.rawValue,
-            "STATE_PLAYING": State.playing.rawValue,
-            "STATE_PAUSED": State.paused.rawValue,
-            "STATE_STOPPED": State.stopped.rawValue,
-            "STATE_BUFFERING": State.buffering.rawValue,
-            "STATE_LOADING": State.loading.rawValue,
-            "STATE_ERROR": State.error.rawValue,
-
-            "TRACK_PLAYBACK_ENDED_REASON_END": PlaybackEndedReason.playedUntilEnd.rawValue,
-            "TRACK_PLAYBACK_ENDED_REASON_JUMPED": PlaybackEndedReason.jumpedToIndex.rawValue,
-            "TRACK_PLAYBACK_ENDED_REASON_NEXT": PlaybackEndedReason.skippedToNext.rawValue,
-            "TRACK_PLAYBACK_ENDED_REASON_PREVIOUS": PlaybackEndedReason.skippedToPrevious.rawValue,
-            "TRACK_PLAYBACK_ENDED_REASON_STOPPED": PlaybackEndedReason.playerStopped.rawValue,
-
-            "PITCH_ALGORITHM_LINEAR": PitchAlgorithm.linear.rawValue,
-            "PITCH_ALGORITHM_MUSIC": PitchAlgorithm.music.rawValue,
-            "PITCH_ALGORITHM_VOICE": PitchAlgorithm.voice.rawValue,
-
-            "CAPABILITY_PLAY": Capability.play.rawValue,
-            "CAPABILITY_PLAY_FROM_ID": "NOOP",
-            "CAPABILITY_PLAY_FROM_SEARCH": "NOOP",
-            "CAPABILITY_PAUSE": Capability.pause.rawValue,
-            "CAPABILITY_STOP": Capability.stop.rawValue,
-            "CAPABILITY_SEEK_TO": Capability.seek.rawValue,
-            "CAPABILITY_SKIP": "NOOP",
-            "CAPABILITY_SKIP_TO_NEXT": Capability.next.rawValue,
-            "CAPABILITY_SKIP_TO_PREVIOUS": Capability.previous.rawValue,
-            "CAPABILITY_SET_RATING": "NOOP",
-            "CAPABILITY_JUMP_FORWARD": Capability.jumpForward.rawValue,
-            "CAPABILITY_JUMP_BACKWARD": Capability.jumpBackward.rawValue,
-            "CAPABILITY_LIKE": Capability.like.rawValue,
-            "CAPABILITY_DISLIKE": Capability.dislike.rawValue,
-            "CAPABILITY_BOOKMARK": Capability.bookmark.rawValue,
-
-            "REPEAT_OFF": RepeatMode.off.rawValue,
-            "REPEAT_TRACK": RepeatMode.track.rawValue,
-            "REPEAT_QUEUE": RepeatMode.queue.rawValue,
-        ]
-    }
-
-    @objc(supportedEvents)
-    override public func supportedEvents() -> [String] {
-        return EventType.allRawValues()
-    }
-
     private func emit(event: EventType, body: Any? = nil) {
-        EventEmitter.shared.emit(event: event, body: body)
+        delegate?.sendEvent(name: event.rawValue, body: body)
     }
 
     // MARK: - AudioSessionControllerDelegate
@@ -164,6 +113,12 @@ public class RNTrackPlayer: RCTEventEmitter, AudioSessionControllerDelegate {
         if hasInitialized {
             reject("player_already_initialized", "The player has already been initialized via setupPlayer.", nil)
             return
+        }
+
+        // configure the FFT audio tap
+        if let fftLength = config["useFFTProcessor"] as? Int {
+            player.audioTap = WaveformAudioTap(mFFTLength: fftLength, mEmit: {data in
+                self.emit(event:EventType.FFTUpdated, body:data)})
         }
 
         // configure buffer size
@@ -359,12 +314,12 @@ public class RNTrackPlayer: RCTEventEmitter, AudioSessionControllerDelegate {
     @objc(add:before:resolver:rejecter:)
     public func add(
         trackDicts: [[String: Any]],
-        before trackIndex: NSNumber,
+        before trackIndex: Int,
         resolve: RCTPromiseResolveBlock,
         reject: RCTPromiseRejectBlock
     ) {
         // -1 means no index was passed and therefore should be inserted at the end.
-        let index = trackIndex.intValue == -1 ? player.items.count : trackIndex.intValue;
+        let index = trackIndex == -1 ? player.items.count : trackIndex;
         if (rejectWhenNotInitialized(reject: reject)) { return }
         if (rejectWhenTrackIndexOutOfBounds(
             index: index,
@@ -426,24 +381,24 @@ public class RNTrackPlayer: RCTEventEmitter, AudioSessionControllerDelegate {
 
     @objc(move:toIndex:resolver:rejecter:)
     public func move(
-        fromIndex: NSNumber,
-        toIndex: NSNumber,
+        fromIndex: Int,
+        toIndex: Int,
         resolve: RCTPromiseResolveBlock,
         reject: RCTPromiseRejectBlock
     ) {
         if (rejectWhenNotInitialized(reject: reject)) { return }
         if (rejectWhenTrackIndexOutOfBounds(
-            index: fromIndex.intValue,
+            index: fromIndex,
             message: "The fromIndex is out of bounds",
             reject: reject)
         ) { return }
         if (rejectWhenTrackIndexOutOfBounds(
-            index: toIndex.intValue,
+            index: toIndex,
             max: Int.max,
             message: "The toIndex is out of bounds",
             reject: reject)
         ) { return }
-        try? player.moveItem(fromIndex: fromIndex.intValue, toIndex: toIndex.intValue)
+        try? player.moveItem(fromIndex: fromIndex, toIndex: toIndex)
         resolve(NSNull())
     }
 
@@ -458,12 +413,12 @@ public class RNTrackPlayer: RCTEventEmitter, AudioSessionControllerDelegate {
 
     @objc(skip:initialTime:resolver:rejecter:)
     public func skip(
-        to trackIndex: NSNumber,
+        to trackIndex: Int,
         initialTime: Double,
         resolve: RCTPromiseResolveBlock,
         reject: RCTPromiseRejectBlock
     ) {
-        let index = trackIndex.intValue;
+        let index = trackIndex;
         if (rejectWhenTrackIndexOutOfBounds(index: index, reject: reject)) { return }
 
         if (rejectWhenNotInitialized(reject: reject)) { return }
@@ -584,10 +539,10 @@ public class RNTrackPlayer: RCTEventEmitter, AudioSessionControllerDelegate {
     }
 
     @objc(setRepeatMode:resolver:rejecter:)
-    public func setRepeatMode(repeatMode: NSNumber, resolve: RCTPromiseResolveBlock, reject: RCTPromiseRejectBlock) {
+    public func setRepeatMode(repeatMode: Int, resolve: RCTPromiseResolveBlock, reject: RCTPromiseRejectBlock) {
         if (rejectWhenNotInitialized(reject: reject)) { return }
 
-        player.repeatMode = SwiftAudioEx.RepeatMode(rawValue: repeatMode.intValue) ?? .off
+        player.repeatMode = RepeatMode(rawValue: repeatMode) ?? .off
         resolve(NSNull())
     }
 
@@ -629,11 +584,11 @@ public class RNTrackPlayer: RCTEventEmitter, AudioSessionControllerDelegate {
     }
 
     @objc(getTrack:resolver:rejecter:)
-    public func getTrack(index: NSNumber, resolve: RCTPromiseResolveBlock, reject: RCTPromiseRejectBlock) {
+    public func getTrack(index: Int, resolve: RCTPromiseResolveBlock, reject: RCTPromiseRejectBlock) {
         if (rejectWhenNotInitialized(reject: reject)) { return }
 
-        if (index.intValue >= 0 && index.intValue < player.items.count) {
-            let track = player.items[index.intValue]
+        if (index >= 0 && index < player.items.count) {
+            let track = player.items[index]
             resolve((track as? Track)?.toObject())
         } else {
             resolve(NSNull())
@@ -733,8 +688,8 @@ public class RNTrackPlayer: RCTEventEmitter, AudioSessionControllerDelegate {
     }
 
     @objc(updateMetadataForTrack:metadata:resolver:rejecter:)
-    public func updateMetadata(for trackIndex: NSNumber, metadata: [String: Any], resolve: RCTPromiseResolveBlock, reject: RCTPromiseRejectBlock) {
-        let index = trackIndex.intValue;
+    public func updateMetadata(for trackIndex: Int, metadata: [String: Any], resolve: RCTPromiseResolveBlock, reject: RCTPromiseRejectBlock) {
+        let index = trackIndex;
         if (rejectWhenNotInitialized(reject: reject)) { return }
         if (rejectWhenTrackIndexOutOfBounds(index: index, reject: reject)) { return }
 
@@ -920,5 +875,56 @@ public class RNTrackPlayer: RCTEventEmitter, AudioSessionControllerDelegate {
                 "playWhenReady": playWhenReady
             ]
         )
+    }
+}
+
+extension RNTrackPlayer {
+    @objc
+    public static var constantsToExport: [AnyHashable: Any] {
+            return [
+                "STATE_NONE": State.none.rawValue,
+                "STATE_READY": State.ready.rawValue,
+                "STATE_PLAYING": State.playing.rawValue,
+                "STATE_PAUSED": State.paused.rawValue,
+                "STATE_STOPPED": State.stopped.rawValue,
+                "STATE_BUFFERING": State.buffering.rawValue,
+                "STATE_LOADING": State.loading.rawValue,
+                "STATE_ERROR": State.error.rawValue,
+
+                "TRACK_PLAYBACK_ENDED_REASON_END": PlaybackEndedReason.playedUntilEnd.rawValue,
+                "TRACK_PLAYBACK_ENDED_REASON_JUMPED": PlaybackEndedReason.jumpedToIndex.rawValue,
+                "TRACK_PLAYBACK_ENDED_REASON_NEXT": PlaybackEndedReason.skippedToNext.rawValue,
+                "TRACK_PLAYBACK_ENDED_REASON_PREVIOUS": PlaybackEndedReason.skippedToPrevious.rawValue,
+                "TRACK_PLAYBACK_ENDED_REASON_STOPPED": PlaybackEndedReason.playerStopped.rawValue,
+
+                "PITCH_ALGORITHM_LINEAR": PitchAlgorithm.linear.rawValue,
+                "PITCH_ALGORITHM_MUSIC": PitchAlgorithm.music.rawValue,
+                "PITCH_ALGORITHM_VOICE": PitchAlgorithm.voice.rawValue,
+
+                "CAPABILITY_PLAY": Capability.play.rawValue,
+                "CAPABILITY_PLAY_FROM_ID": "NOOP",
+                "CAPABILITY_PLAY_FROM_SEARCH": "NOOP",
+                "CAPABILITY_PAUSE": Capability.pause.rawValue,
+                "CAPABILITY_STOP": Capability.stop.rawValue,
+                "CAPABILITY_SEEK_TO": Capability.seek.rawValue,
+                "CAPABILITY_SKIP": "NOOP",
+                "CAPABILITY_SKIP_TO_NEXT": Capability.next.rawValue,
+                "CAPABILITY_SKIP_TO_PREVIOUS": Capability.previous.rawValue,
+                "CAPABILITY_SET_RATING": "NOOP",
+                "CAPABILITY_JUMP_FORWARD": Capability.jumpForward.rawValue,
+                "CAPABILITY_JUMP_BACKWARD": Capability.jumpBackward.rawValue,
+                "CAPABILITY_LIKE": Capability.like.rawValue,
+                "CAPABILITY_DISLIKE": Capability.dislike.rawValue,
+                "CAPABILITY_BOOKMARK": Capability.bookmark.rawValue,
+
+                "REPEAT_OFF": RepeatMode.off.rawValue,
+                "REPEAT_TRACK": RepeatMode.track.rawValue,
+                "REPEAT_QUEUE": RepeatMode.queue.rawValue,
+            ]
+        }
+
+    @objc
+    public static var supportedEvents: [String] {
+        return EventType.allRawValues()
     }
 }

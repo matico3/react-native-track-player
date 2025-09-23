@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { AppState } from 'react-native';
 
 import { getProgress } from '../trackPlayer';
 import { Event } from '../constants';
@@ -14,8 +15,9 @@ const INITIAL_STATE = {
 /**
  * Poll for track progress for the given interval (in miliseconds)
  * @param updateInterval - ms interval
+ * @param background - if update state in background. default true. may severely affects performance.
  */
-export function useProgress(updateInterval = 1000) {
+export function useProgress(updateInterval = 1000, background = true) {
   const [state, setState] = useState<Progress>(INITIAL_STATE);
 
   useTrackPlayerEvents([Event.PlaybackActiveTrackChanged], () => {
@@ -27,9 +29,10 @@ export function useProgress(updateInterval = 1000) {
 
     const update = async () => {
       try {
-        const { position, duration, buffered } = await getProgress();
         if (!mounted) return;
+        if (!background && AppState.currentState !== 'active') return;
 
+        const { position, duration, buffered } = await getProgress();
         setState((state) =>
           position === state.position &&
           duration === state.duration &&

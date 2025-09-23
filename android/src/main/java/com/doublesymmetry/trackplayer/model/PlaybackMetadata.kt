@@ -65,8 +65,8 @@ data class PlaybackMetadata(
                     is UrlLinkFrame -> {
                         when (entry.id.uppercase()) {
                             "WOAS", "WOAF", "WOAR", "WAR" -> {
-                                handled = true;
-                                url = entry.url;
+                                handled = true
+                                url = entry.url
                             }
                         }
                     }
@@ -113,7 +113,7 @@ data class PlaybackMetadata(
          * https://xiph.org/vorbis/doc/v-comment.html
          */
         fun fromVorbisComment(metadata: Metadata): PlaybackMetadata? {
-            var handled = false;
+            var handled = false
 
             var title: String? = null
             var url: String? = null
@@ -128,15 +128,15 @@ data class PlaybackMetadata(
                     when (entry.key) {
                         "TITLE" -> {
                             handled = true
-                            title = entry.value;
+                            title = entry.value
                         }
                         "ARTIST" -> {
                             handled = true
-                            artist = entry.value;
+                            artist = entry.value
                         }
                         "ALBUM" -> {
                             handled = true
-                            album = entry.value;
+                            album = entry.value
                         }
                         "DATE" -> {
                             handled = true
@@ -161,7 +161,7 @@ data class PlaybackMetadata(
          * https://developer.apple.com/library/archive/documentation/QuickTime/QTFF/Metadata/Metadata.html
          */
         fun fromQuickTime(metadata: Metadata): PlaybackMetadata? {
-            var handled = false;
+            var handled = false
 
             var title: String? = null
             var artist: String? = null
@@ -170,28 +170,28 @@ data class PlaybackMetadata(
             var genre: String? = null
 
             for (i in 0 until metadata.length()) {
-                val entry = metadata[i];
+                val entry = metadata[i]
                 if (entry is MdtaMetadataEntry) {
                     when (entry.key) {
                         "com.apple.quicktime.title" -> {
                             handled = true
-                            title = entry.value.toString();
+                            title = entry.value.toString()
                         }
                         "com.apple.quicktime.artist" -> {
                             handled = true
-                            artist = entry.value.toString();
+                            artist = entry.value.toString()
                         }
                         "com.apple.quicktime.album" -> {
                             handled = true
-                            album = entry.value.toString();
+                            album = entry.value.toString()
                         }
                         "com.apple.quicktime.creationdate" -> {
                             handled = true
-                            date = entry.value.toString();
+                            date = entry.value.toString()
                         }
                         "com.apple.quicktime.genre" -> {
                             handled = true
-                            genre = entry.value.toString();
+                            genre = entry.value.toString()
                         }
                     }
                 }

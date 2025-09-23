@@ -23,11 +23,6 @@ target 'RNTPExample' do
     :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
 
-  target 'RNTPExampleTests' do
-    inherit! :complete
-    # Pods for testing
-  end
-
   post_install do |installer|
     react_native_post_install(
       installer,
@@ -35,7 +30,6 @@ target 'RNTPExample' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
-    __apply_Xcode_12_5_M1_post_install_workaround(installer)
   end
 end
 

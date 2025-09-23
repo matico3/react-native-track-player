@@ -2,6 +2,8 @@
 
 import android.content.Context
 import android.media.AudioManager
+import android.media.audiofx.Equalizer
+import android.media.audiofx.LoudnessEnhancer
 import androidx.annotation.CallSuper
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
@@ -10,6 +12,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Metadata
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.Player.Listener
 import androidx.media3.common.TrackSelectionParameters
@@ -17,6 +20,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import com.lovegaoshi.kotlinaudio.event.PlayerEventHolder
 import com.lovegaoshi.kotlinaudio.models.AudioItem
 import com.lovegaoshi.kotlinaudio.models.audioItem2MediaItem
@@ -29,17 +33,21 @@ import com.lovegaoshi.kotlinaudio.models.PlaybackError
 import com.lovegaoshi.kotlinaudio.models.PlayerOptions
 import com.lovegaoshi.kotlinaudio.models.PositionChangedReason
 import com.lovegaoshi.kotlinaudio.models.setWakeMode
+import com.lovegaoshi.kotlinaudio.player.components.APMRenderersFactory
 import com.lovegaoshi.kotlinaudio.player.components.Cache
 import com.lovegaoshi.kotlinaudio.player.components.FocusManager
 import com.lovegaoshi.kotlinaudio.player.components.MediaFactory
 import com.lovegaoshi.kotlinaudio.player.components.setupBuffer
+import com.lovegaoshi.kotlinaudio.processors.FFTEmitter
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import timber.log.Timber
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import kotlin.math.min
 
 abstract class AudioPlayer internal constructor(
     private val context: Context,
@@ -49,6 +57,8 @@ abstract class AudioPlayer internal constructor(
     // for crossfading
     private var exoPlayer1: ExoPlayer
     private var exoPlayer2: ExoPlayer? = null
+    private var loudnessEnhancers = ArrayList<LoudnessEnhancer>()
+    private var equalizers = ArrayList<Equalizer>()
     private var currentExoPlayer = true
 
     var exoPlayer: ExoPlayer
@@ -59,6 +69,7 @@ abstract class AudioPlayer internal constructor(
     val playerEventHolder = PlayerEventHolder()
     private val focusListener = APMFocusListener()
     private val focusManager = FocusManager(context, listener=focusListener, options=options)
+    var fftEmitter: (DoubleArray) -> Unit = { v -> Timber.tag("APMFFT").d("FFT emitted $v") }
 
     var alwaysPauseOnInterruption: Boolean
         get() = focusManager.alwaysPauseOnInterruption
@@ -114,7 +125,7 @@ abstract class AudioPlayer internal constructor(
         }
 
     private var volumeMultiplier = 1f
-        private set(value) {
+        set(value) {
             field = value
             volume = volume
         }
@@ -149,6 +160,12 @@ abstract class AudioPlayer internal constructor(
             exoPlayer.setPlaybackSpeed(value)
         }
 
+    var playbackPitch: Float
+        get() = exoPlayer.playbackParameters.pitch
+        set(v) {
+            exoPlayer.playbackParameters = PlaybackParameters(playbackSpeed, v)
+        }
+
     val isPlaying
         get() = exoPlayer.isPlaying
 
@@ -179,7 +196,20 @@ abstract class AudioPlayer internal constructor(
     }
 
     private fun initExoPlayer(name: String): ExoPlayer {
-        val renderer = DefaultRenderersFactory(context)
+        // HACK: horrible memleak, but I cant think of how to track exoplayers
+        val nameHolder = arrayOf("")
+        val renderer = if (options.useFFTProcessor > 0) APMRenderersFactory(
+            context, options.useFFTProcessor, object: FFTEmitter {
+                override fun onSpectrumReady(spectrum: FloatArray, maxRawAmp: Float) {
+                    return
+                }
+                override fun onFrequencyFFTReady(fft: DoubleArray, max: Float) {
+                    if (this@AudioPlayer.exoPlayer.toString() == nameHolder[0]) {
+                        fftEmitter(fft)
+                    }
+                }
+
+        }) else DefaultRenderersFactory(context)
         renderer.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
         val mPlayer = ExoPlayer
             .Builder(context)
@@ -193,13 +223,14 @@ abstract class AudioPlayer internal constructor(
             .setSkipSilenceEnabled(options.skipSilence)
             .setName(name)
             .build()
-
         val audioAttributes = AudioAttributes.Builder()
             .setUsage(C.USAGE_MEDIA)
             .setContentType(options.audioContentType)
-            .build();
+            .build()
         mPlayer.setAudioAttributes(audioAttributes, options.handleAudioFocus)
-
+        nameHolder[0] = mPlayer.toString()
+        // https://github.com/androidx/media/issues/2319
+        mPlayer.addAnalyticsListener(AudioFxInitListener())
         return mPlayer
     }
 
@@ -233,6 +264,35 @@ abstract class AudioPlayer internal constructor(
     open fun load(item: AudioItem) {
         players().forEach { p -> p.addMediaItem(audioItem2MediaItem(item)) }
         exoPlayer.prepare()
+    }
+
+    fun setLoudnessEnhance(gain: Int) {
+        loudnessEnhancers.forEach { l ->
+            l.setTargetGain(gain)
+            l.enabled = true
+        }
+    }
+
+    fun setEqualizerPreset(preset: Int) {
+        equalizers.forEach { equalizer ->
+            equalizer.usePreset(preset.toShort())
+            equalizer.enabled = true
+        }
+    }
+
+    fun getCurrentEQPreset(): Int {
+        if (equalizers.isEmpty()) {
+            return -1
+        }
+        return equalizers[0].currentPreset.toInt()
+    }
+
+    fun getEqualizerPresets(): List<String> {
+        if (equalizers.isEmpty()) {
+            return arrayListOf()
+        }
+        return Array(equalizers[0].numberOfPresets.toInt()) { i -> i }
+            .map { i -> equalizers[0].getPresetName(i.toShort()) }
     }
 
     fun togglePlaying() {
@@ -303,6 +363,8 @@ abstract class AudioPlayer internal constructor(
             p.removeListener(playerListener)
             p.release()
         }
+        equalizers.forEach { e -> e.release() }
+        loudnessEnhancers.forEach { e -> e.release() }
         cache?.release()
         cache = null
     }
@@ -317,7 +379,7 @@ abstract class AudioPlayer internal constructor(
         exoPlayer.seekTo(positionMs)
     }
 
-    fun crossFadePrepare(previous: Boolean = false) {
+    fun crossFadePrepare(previous: Boolean = false, seekTo: Double = 0.0) {
         if (!options.crossfade) { return }
         val mPlayer = if (currentExoPlayer) exoPlayer2!! else exoPlayer1
         // align playing index
@@ -325,55 +387,92 @@ abstract class AudioPlayer internal constructor(
         if (previous) { mPlayer.seekToPreviousMediaItem() }
         else { mPlayer.seekToNextMediaItem() }
         mPlayer.prepare()
+        if (seekTo > 0) {
+            mPlayer.seekTo((seekTo * 1000).toLong())
+        }
     }
 
+    /**
+     * switches rotating exoplayers to achieve crossfade.
+     * playerOperation:
+     */
     fun switchExoPlayer(
         playerOperation: () -> Unit = ::play,
         fadeDuration: Long = 2500,
         fadeInterval: Long = 20,
-        fadeToVolume: Float = 1f
+        fadeToVolume: Float = 1f,
+        waitUntil: Long = 0,
     ){
         if (!options.crossfade) {
             playerOperation()
             return
         }
-        val prevPlayer: Player
-        if (currentExoPlayer) {
-            currentExoPlayer = false
-            exoPlayer = exoPlayer2!!
-            prevPlayer = exoPlayer1
-        } else {
-            currentExoPlayer = true
-            exoPlayer = exoPlayer1
-            prevPlayer = exoPlayer2!!
-        }
-        prevPlayer.setAudioAttributes(prevPlayer.audioAttributes, false)
-        player.switchCrossFadePlayer()
         scope.launch {
-            var fadeOutDuration = fadeDuration
-            val volumeDiff = -prevPlayer.volume * fadeInterval / fadeOutDuration
-            while (fadeOutDuration > 0) {
-                fadeOutDuration -= fadeInterval
-                prevPlayer.volume += volumeDiff
-                delay(fadeInterval)
+            val delayAmount = if (waitUntil == 0L) 0 else {
+                0L.coerceAtLeast(waitUntil - player.currentPosition)
             }
-            prevPlayer.volume = 0f
-            prevPlayer.pause()
-        }
-        scope.launch {
-            exoPlayer.volume = 0f
-            playerOperation()
-            exoPlayer.setAudioAttributes(exoPlayer.audioAttributes, options.handleAudioFocus)
-            if (fadeToVolume > 0) {
-                var fadeInDuration = fadeDuration
-                val volumeDiff = fadeToVolume * fadeInterval / fadeInDuration
-                while (fadeInDuration > 0) {
-                    fadeInDuration -= fadeInterval
-                    exoPlayer.volume += volumeDiff
+            delay(delayAmount)
+
+            val prevPlayer: Player
+            if (currentExoPlayer) {
+                currentExoPlayer = false
+                exoPlayer = exoPlayer2!!
+                prevPlayer = exoPlayer1
+            } else {
+                currentExoPlayer = true
+                exoPlayer = exoPlayer1
+                prevPlayer = exoPlayer2!!
+            }
+            prevPlayer.setAudioAttributes(prevPlayer.audioAttributes, false)
+            player.switchCrossFadePlayer()
+            scope.launch {
+                var fadeOutDuration = fadeDuration
+                val startFadeOutTime = System.currentTimeMillis()
+                val fadeFromVolume = prevPlayer.volume
+                while (fadeOutDuration > 0) {
+                    fadeOutDuration -= fadeInterval
+                    prevPlayer.volume = fadeFromVolume * (1 - min((System.currentTimeMillis() - startFadeOutTime), fadeDuration).toFloat() / fadeDuration)
                     delay(fadeInterval)
                 }
+                prevPlayer.volume = 0f
+                prevPlayer.pause()
             }
-            // player.broadcastMediaItem()
+            scope.launch {
+                exoPlayer.volume = 0f
+                playerOperation()
+                exoPlayer.setAudioAttributes(exoPlayer.audioAttributes, options.handleAudioFocus)
+                if (fadeToVolume > 0) {
+                    var fadeInDuration = fadeDuration
+                    val startTime = System.currentTimeMillis()
+                    while (fadeInDuration > 0) {
+                        fadeInDuration -= fadeInterval
+                        exoPlayer.volume = fadeToVolume * min((System.currentTimeMillis() - startTime), fadeDuration) / fadeDuration
+                        delay(fadeInterval)
+                    }
+                }
+                // player.broadcastMediaItem()
+            }
+        }
+    }
+
+    inner class AudioFxInitListener: AnalyticsListener {
+        @OptIn(UnstableApi::class)
+        override fun onAudioSessionIdChanged(eventTime: AnalyticsListener.EventTime, audioSessionId: Int) {
+            // Try to add LoudnessEnhancer
+            try {
+                val enhancer = LoudnessEnhancer(audioSessionId)
+                loudnessEnhancers.add(enhancer)
+            } catch (e: RuntimeException) {
+                Timber.tag("APMAudioFx").e("[AudioFx] failed to load loudnessEnhancer. it's fine if in dev!")
+            }
+
+            // Try to add Equalizer
+            try {
+                val equalizer = Equalizer(0, audioSessionId)
+                equalizers.add(equalizer)
+            } catch (e: RuntimeException) {
+                Timber.tag("APMAudioFx").e("[AudioFx] failed to load equalizer. it's fine if in dev!")
+            }
         }
     }
 

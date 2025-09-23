@@ -4,7 +4,6 @@ import android.content.Intent
 import android.os.Binder
 import android.os.Bundle
 import android.os.IBinder
-import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaLibraryService
@@ -15,6 +14,7 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.lovegaoshi.kotlinaudio.models.CustomButton
 import com.lovegaoshi.kotlinaudio.models.PlayerOptions
 import com.lovegaoshi.kotlinaudio.player.QueuedAudioPlayer
+import timber.log.Timber
 
 class MusicService : MediaLibraryService() {
     private val binder = MusicBinder()
@@ -77,7 +77,7 @@ class MusicService : MediaLibraryService() {
             customCommand: SessionCommand,
             args: Bundle
         ): ListenableFuture<SessionResult> {
-            Log.d("APM", "custom command triggered: ${customCommand.customAction}")
+            Timber.tag("APM").d("custom command triggered: ${customCommand.customAction}")
             when (customCommand.customAction) {
                 CROSSFADE_PREV_PREPARE -> { player.crossFadePrepare(true) }
                 CROSSFADE_PREV -> { player.switchExoPlayer({ player.previous() }) }

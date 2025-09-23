@@ -2,7 +2,6 @@ package com.lovegaoshi.kotlinaudio.player.components
 
 import android.content.Context
 import android.media.AudioManager
-import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.media.AudioAttributesCompat
 import androidx.media.AudioFocusRequestCompat
@@ -12,7 +11,7 @@ import com.lovegaoshi.kotlinaudio.models.PlayerOptions
 class FocusManager (
     private val context: Context,
     private val listener: AudioManager.OnAudioFocusChangeListener,
-    private val options: PlayerOptions
+    options: PlayerOptions
 ) {
     var hasAudioFocus = false
     var alwaysPauseOnInterruption = options.alwaysPauseOnInterruption

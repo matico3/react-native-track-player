@@ -2,8 +2,8 @@ package com.lovegaoshi.kotlinaudio.models
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.net.Uri
 import android.os.Bundle
+import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import com.lovegaoshi.kotlinaudio.utils.getEmbeddedBitmapArray
@@ -84,7 +84,7 @@ fun audioItem2MediaItem(audioItem: AudioItem, context: Context? = null): MediaIt
             MediaMetadata.Builder()
             .setTitle(audioItem.title)
             .setArtist(audioItem.artist)
-            .setArtworkUri(Uri.parse(
+            .setArtworkUri((
                 if (context != null && audioItem.audioUrl.startsWith("file://")) {
                     saveMediaCoverToPng(
                         audioItem.audioUrl,
@@ -93,7 +93,7 @@ fun audioItem2MediaItem(audioItem: AudioItem, context: Context? = null): MediaIt
                     )
                         ?: audioItem.artwork
                 }
-                else audioItem.artwork))
+                else audioItem.artwork)?.toUri())
             .setArtworkData(if (audioItem.audioUrl.startsWith("file://")) getEmbeddedBitmapArray(
                 audioItem.audioUrl.substring(7)) else null, MediaMetadata.PICTURE_TYPE_MEDIA)
             .setExtras(Bundle().apply {
