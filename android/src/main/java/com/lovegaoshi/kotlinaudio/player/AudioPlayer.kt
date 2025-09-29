@@ -644,6 +644,10 @@ abstract class AudioPlayer internal constructor(
             mPlayer2?.setMediaItems(mediaItems, resetPosition)
         }
         override fun isCommandAvailable(command: Int): Boolean {
+            // if (command == Player.COMMAND_GET_TIMELINE) {
+            //     return false
+            // }
+
             if (options.alwaysShowNext) {
                 return when (command) {
                     COMMAND_SEEK_TO_NEXT_MEDIA_ITEM -> true
@@ -659,6 +663,7 @@ abstract class AudioPlayer internal constructor(
                 return super.getAvailableCommands().buildUpon()
                     .add(COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
                     .add(COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+                    // .remove(Player.COMMAND_GET_TIMELINE) removes Queue button in AA, but on last update notification did not show because of this line and there was no background activity support
                     .build()
             }
             return super.getAvailableCommands()
